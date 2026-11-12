@@ -992,7 +992,7 @@ export class BattleRenderer {
   private drawPedestals(): void {
     const ctx = this.ctx
     for (const u of this.engine.units) {
-      if (u.isBase) continue
+      if (u.isBase || u.isElite) continue
       const x = this.sx(u.homeX)
       const y = this.sy(u.homeY)
       const r = this.cell * 0.36

@@ -247,6 +247,7 @@ export const DEFAULT_CONFIG: BattleConfig = {
       knockback: 2.2,
       stun: 0,
       cone: { angle: 1.15, minFactor: 0.34 },
+      regen: { rate: 7, delay: 5 },
       respawn: 0,
       elite: true,
     },

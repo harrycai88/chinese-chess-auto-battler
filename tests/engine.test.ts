@@ -383,10 +383,10 @@ describe('胜负与加时', () => {
     const s = run.summary
     expect(s.winner).toBe('black')
     expect(s.reason).toBe('overtime-bleed')
-    expect(s.duration).toBeCloseTo(130.8833, 3)
-    expect(s.blackBaseHp).toBeCloseTo(1139.91, 1)
-    expect(s.stats.red.damage).toBeCloseTo(26984.91, 0)
-    expect(s.stats.black.damage).toBeCloseTo(27602.02, 0)
+    expect(s.duration).toBeCloseTo(130.05, 3)
+    expect(s.blackBaseHp).toBeCloseTo(1239.91, 1)
+    expect(s.stats.red.damage).toBeCloseTo(26925.26, 0)
+    expect(s.stats.black.damage).toBeCloseTo(27564.37, 0)
   })
 
   it('完整对局能跑完且统计自洽', () => {
