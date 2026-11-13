@@ -9,12 +9,14 @@ import {
 } from '../engine/tactics'
 import { buildConfig } from '../engine/config'
 import type { LaunchOptions, SavedSettings } from './types'
+import { displayAuthor } from './avatars'
 import StrategySelect from './components/StrategySelect.vue'
 import SegmentedControl from './components/SegmentedControl.vue'
 import NumberSlider from './components/NumberSlider.vue'
 import ToggleSwitch from './components/ToggleSwitch.vue'
 import BattlePreview from './components/BattlePreview.vue'
 import RulesModal from './components/RulesModal.vue'
+import TacticAvatar from './components/TacticAvatar.vue'
 import Icon from './components/Icon.vue'
 
 const emit = defineEmits<{ start: [options: LaunchOptions] }>()
@@ -33,6 +35,7 @@ const bleedMul = ref(1)
 const damageNumbers = ref(true)
 const effects = ref(true)
 const intentLines = ref(false)
+const screenShake = ref(true)
 
 const seed = ref(randomSeed())
 const seedText = ref(String(seed.value))
@@ -77,6 +80,7 @@ const settings = computed<SavedSettings>(() => ({
   damageNumbers: damageNumbers.value,
   effects: effects.value,
   intentLines: intentLines.value,
+  screenShake: screenShake.value,
 }))
 
 function randomSeed(): number {
@@ -129,6 +133,7 @@ function start() {
       damageNumbers: damageNumbers.value,
       effects: effects.value,
       intentLines: intentLines.value,
+      screenShake: screenShake.value,
     },
   })
 }
@@ -151,6 +156,7 @@ onMounted(() => {
       if (typeof s.damageNumbers === 'boolean') damageNumbers.value = s.damageNumbers
       if (typeof s.effects === 'boolean') effects.value = s.effects
       if (typeof s.intentLines === 'boolean') intentLines.value = s.intentLines
+      if (typeof s.screenShake === 'boolean') screenShake.value = s.screenShake
     }
   } catch {
     /* 忽略损坏的本地设置 */
@@ -252,8 +258,8 @@ watch(
 
           <div class="mt-10 flex items-center gap-5 border-t border-ink-200/60 pt-5">
             <div>
-              <div class="num font-display text-2xl font-bold text-ink-800">2</div>
-              <div class="mt-0.5 text-[10px] tracking-wide text-ink-400">内置策略</div>
+              <div class="num font-display text-2xl font-bold text-ink-800">{{ ALL_TACTICS.length }}</div>
+              <div class="mt-0.5 text-[10px] tracking-wide text-ink-400">可用策略</div>
             </div>
             <div class="h-8 w-px bg-ink-200/70"></div>
             <div>
@@ -395,6 +401,7 @@ watch(
               <ToggleSwitch v-model="muted" label="静音" description="合成音效；关掉不影响判定" />
               <ToggleSwitch v-model="damageNumbers" label="伤害数字" description="混战中显示浮动伤害" />
               <ToggleSwitch v-model="effects" label="战场特效" description="爆炸、尘土与粒子" />
+              <ToggleSwitch v-model="screenShake" label="画面震动" description="重大冲击时的镜头震动" />
               <ToggleSwitch v-model="intentLines" label="意图线" description="显示单位这一 tick 的目标连线" />
             </div>
 
@@ -441,18 +448,42 @@ watch(
             <div class="p-5">
               <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
                 <div class="min-w-0 text-center">
-                  <div class="mx-auto flex h-11 w-11 items-center justify-center rounded-full border-2 border-vermilion-600/25 bg-vermilion-600 text-paper-50 shadow-sm">
-                    <span class="font-display text-lg font-bold">{{ redTactic.glyph ?? redTactic.name.slice(0, 1) }}</span>
+                  <div class="flex justify-center">
+                    <TacticAvatar
+                      v-if="redTactic.source === 'external'"
+                      :author="redTactic.author"
+                      size="lg"
+                      team="red"
+                    />
+                    <div
+                      v-else
+                      class="flex h-11 w-11 items-center justify-center rounded-full border-2 border-vermilion-600/25 bg-vermilion-600 text-paper-50 shadow-sm"
+                    >
+                      <span class="font-display text-lg font-bold">{{ redTactic.glyph ?? redTactic.name.slice(0, 1) }}</span>
+                    </div>
                   </div>
                   <div class="mt-2 truncate text-[12px] font-bold text-ink-800">{{ redTactic.name }}</div>
+                  <div class="mt-0.5 truncate text-[10px] text-ink-500">{{ displayAuthor(redTactic.author) }}</div>
                   <div class="text-[9px] tracking-[0.16em] text-vermilion-600">红方</div>
                 </div>
                 <div class="font-display text-lg font-bold text-ink-300">VS</div>
                 <div class="min-w-0 text-center">
-                  <div class="mx-auto flex h-11 w-11 items-center justify-center rounded-full border-2 border-ink-800 bg-ink-800 text-paper-50 shadow-sm">
-                    <span class="font-display text-lg font-bold">{{ blackTactic.glyph ?? blackTactic.name.slice(0, 1) }}</span>
+                  <div class="flex justify-center">
+                    <TacticAvatar
+                      v-if="blackTactic.source === 'external'"
+                      :author="blackTactic.author"
+                      size="lg"
+                      team="black"
+                    />
+                    <div
+                      v-else
+                      class="flex h-11 w-11 items-center justify-center rounded-full border-2 border-ink-800 bg-ink-800 text-paper-50 shadow-sm"
+                    >
+                      <span class="font-display text-lg font-bold">{{ blackTactic.glyph ?? blackTactic.name.slice(0, 1) }}</span>
+                    </div>
                   </div>
                   <div class="mt-2 truncate text-[12px] font-bold text-ink-800">{{ blackTactic.name }}</div>
+                  <div class="mt-0.5 truncate text-[10px] text-ink-500">{{ displayAuthor(blackTactic.author) }}</div>
                   <div class="text-[9px] tracking-[0.16em] text-ink-400">黑方</div>
                 </div>
               </div>

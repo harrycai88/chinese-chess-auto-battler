@@ -6,6 +6,7 @@ export interface RenderOptions {
   damageNumbers: boolean
   intentLines: boolean
   effects: boolean
+  screenShake?: boolean
 }
 
 interface Visual {
@@ -168,6 +169,7 @@ export class BattleRenderer {
   private ghosts: GhostFx[] = []
   private muzzles: MuzzleFx[] = []
   private shake = 0
+  private lastShakeAt = -1000
   private baseFlash: Record<Team, number> = { red: 0, black: 0 }
   private lastTextAt = new Map<number, number>()
   private wood: HTMLCanvasElement
@@ -201,6 +203,14 @@ export class BattleRenderer {
 
   setOptions(options: RenderOptions): void {
     this.options = options
+    if (options.screenShake === false) this.shake = 0
+  }
+
+  private triggerShake(amount: number, cap: number, cooldownMs = 0): void {
+    if (this.options.screenShake === false) return
+    if (cooldownMs > 0 && this.now - this.lastShakeAt < cooldownMs) return
+    this.lastShakeAt = this.now
+    this.shake = Math.min(cap, Math.max(this.shake, amount))
   }
 
   setSelection(id: number | null): void {
@@ -369,7 +379,7 @@ export class BattleRenderer {
         case 'impact': {
           if (e.meta === 'shell') {
             this.explosion(x, y)
-            this.shake = Math.min(10, this.shake + 3.2)
+            this.triggerShake(2.6, 4.5, 900)
           } else {
             this.rings.push({
               x,
@@ -431,7 +441,7 @@ export class BattleRenderer {
           })
           this.sparks(x, y, 10, team.glow, 2.4)
           if (e.unitType === 'base') {
-            this.shake = 18
+            this.triggerShake(14, 14)
             this.endFlash = 0.6
           }
           break
@@ -528,7 +538,7 @@ export class BattleRenderer {
             }
             this.sparks(x, y, 8, 'rgba(255,230,180,.55)', 2)
           } else if (e.phase === 'land') {
-            this.shake = Math.min(9, this.shake + 2.6)
+            this.triggerShake(2.2, 4.0, 900)
             this.rings.push({
               x,
               y,
@@ -603,12 +613,14 @@ export class BattleRenderer {
           if (base) {
             this.sparks(this.sx(base.x), this.sy(base.y), 6, 'rgba(255,190,120,.8)', 1.6)
           }
-          if (e.meta !== 'bleed') this.shake = Math.min(12, this.shake + 2.6)
+          if (e.meta !== 'bleed' && (e.amount ?? 0) >= 55) {
+            this.triggerShake(3.6, 5.5, 700)
+          }
           break
         }
         case 'overtime': {
           this.overtimeFlash = 1
-          this.shake = 8
+          this.triggerShake(7, 7)
           break
         }
         case 'end': {
@@ -717,9 +729,9 @@ export class BattleRenderer {
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
     ctx.clearRect(0, 0, this.width, this.height)
     ctx.save()
-    if (this.shake > 0.1) {
+    if ((this.options.screenShake ?? true) && this.shake > 0.12) {
       const s = this.shake
-      ctx.translate(Math.sin(now * 0.09) * s, Math.cos(now * 0.11) * s * 0.7)
+      ctx.translate(Math.sin(now * 0.055) * s, Math.cos(now * 0.07) * s * 0.65)
     }
 
     this.drawBoard()
@@ -762,7 +774,8 @@ export class BattleRenderer {
   }
 
   private updateFx(dt: number): void {
-    this.shake *= Math.exp(-dt * 7)
+    this.shake *= Math.exp(-dt * 11)
+    if (this.shake < 0.12) this.shake = 0
     this.baseFlash.red = Math.max(0, this.baseFlash.red - dt)
     this.baseFlash.black = Math.max(0, this.baseFlash.black - dt)
     this.overtimeFlash = Math.max(0, this.overtimeFlash - dt * 0.8)

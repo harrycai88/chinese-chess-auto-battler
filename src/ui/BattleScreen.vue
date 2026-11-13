@@ -4,9 +4,11 @@ import { getTactic } from '../engine/tactics'
 import { UNIT_META } from '../engine/config'
 import { useBattle } from './composables/useBattle'
 import type { LaunchOptions } from './types'
+import { displayAuthor } from './avatars'
 import Icon from './components/Icon.vue'
 import ToggleSwitch from './components/ToggleSwitch.vue'
 import MobileInfoDrawer from './components/MobileInfoDrawer.vue'
+import TacticAvatar from './components/TacticAvatar.vue'
 
 const props = defineProps<{ launch: LaunchOptions }>()
 const emit = defineEmits<{ exit: []; rematch: [] }>()
@@ -34,8 +36,14 @@ const {
   seed: props.launch.seed,
   speed: props.launch.speed,
   muted: props.launch.muted,
-  render: { ...props.launch.render },
+  render: {
+    screenShake: true,
+    ...props.launch.render,
+  },
 })
+
+const redAuthor = computed(() => displayAuthor(red.author))
+const blackAuthor = computed(() => displayAuthor(black.author))
 
 const settingsOpen = ref(false)
 const mobileInfo = ref(false)
@@ -176,82 +184,34 @@ onBeforeUnmount(() => {
   <div class="flex h-screen flex-col overflow-hidden bg-paper-100">
     <!-- 顶栏 -->
     <header class="relative z-20 border-b border-ink-200/70 bg-paper-50/90 backdrop-blur">
-      <div class="flex h-[68px] items-center gap-2 px-2 sm:gap-3 sm:px-4">
+      <div class="flex h-[54px] items-center gap-2 px-2 sm:gap-3 sm:px-4">
         <button class="icon-btn shrink-0" type="button" title="返回配置" @click="emit('exit')">
           <Icon name="arrow-left" :size="16" />
         </button>
 
-        <div class="hidden min-w-[130px] shrink-0 items-center gap-2 lg:flex">
-          <div class="seal h-8 w-8 text-[15px]">棋</div>
+        <div class="flex min-w-0 items-center gap-2">
+          <div class="seal h-8 w-8 shrink-0 text-[15px]">棋</div>
           <div class="leading-tight">
             <div class="font-display text-[15px] font-bold tracking-wide text-ink-800">棋阵 · 观战</div>
             <div class="font-mono text-[9px] tracking-[0.08em] text-ink-300">SEED {{ launch.seed }}</div>
           </div>
         </div>
 
-        <div class="hidden h-8 w-px shrink-0 bg-ink-200/70 md:block"></div>
+        <div class="hidden h-6 w-px shrink-0 bg-ink-200/70 md:block"></div>
 
-        <!-- 基地血条 -->
-        <div class="flex min-w-0 flex-1 justify-center">
-          <div class="grid w-full max-w-[800px] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 sm:gap-5">
-            <div class="min-w-0">
-              <div class="mb-1 flex items-baseline gap-2">
-                <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-vermilion-500"></span>
-                <span class="truncate text-[11px] font-bold text-ink-700 sm:text-[12px]">
-                  <span class="hidden sm:inline">红 · {{ red.name }}</span>
-                  <span class="sm:hidden">红</span>
-                </span>
-                <span class="num ml-auto shrink-0 font-mono text-[10px] font-semibold text-ink-500 sm:text-[11px]">
-                  {{ Math.round(hud.redBaseHp) }}<span class="hidden text-ink-300 sm:inline"> / {{ hud.redBaseMax }}</span>
-                </span>
-              </div>
-              <div class="relative h-[7px] overflow-hidden rounded-full border border-ink-900/[.06] bg-ink-900/[.07]">
-                <div
-                  class="hud-bar absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-vermilion-700 to-vermilion-500"
-                  :class="lowRed ? 'animate-pulse' : ''"
-                  :style="{ width: redPct + '%' }"
-                />
-              </div>
-            </div>
-
-            <div class="flex min-w-[72px] flex-col items-center sm:min-w-[118px]">
-              <div class="flex items-center gap-1.5">
-                <span class="num font-display text-[18px] font-bold leading-none text-ink-800 sm:text-[24px]">
-                  {{ timerText }}
-                </span>
-                <span
-                  class="rounded border px-1 py-0.5 text-[8px] font-bold tracking-[0.14em] sm:text-[9px]"
-                  :class="phaseClass"
-                >
-                  {{ phaseText }}
-                </span>
-              </div>
-              <div class="mt-1 text-[8px] uppercase tracking-[0.18em] text-ink-300">{{ timerLabel }}</div>
-            </div>
-
-            <div class="min-w-0">
-              <div class="mb-1 flex items-baseline gap-2">
-                <span class="num mr-auto shrink-0 font-mono text-[10px] font-semibold text-ink-500 sm:text-[11px]">
-                  {{ Math.round(hud.blackBaseHp) }}<span class="hidden text-ink-300 sm:inline"> / {{ hud.blackBaseMax }}</span>
-                </span>
-                <span class="truncate text-right text-[11px] font-bold text-ink-700 sm:text-[12px]">
-                  <span class="hidden sm:inline">{{ black.name }} · 黑</span>
-                  <span class="sm:hidden">黑</span>
-                </span>
-                <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-ink-800"></span>
-              </div>
-              <div class="relative h-[7px] overflow-hidden rounded-full border border-ink-900/[.06] bg-ink-900/[.07]">
-                <div
-                  class="hud-bar absolute inset-y-0 right-0 rounded-full bg-gradient-to-l from-ink-900 to-ink-800"
-                  :class="lowBlack ? 'animate-pulse' : ''"
-                  :style="{ width: blackPct + '%' }"
-                />
-              </div>
-            </div>
+        <div class="hidden min-w-0 flex-1 items-center justify-center gap-3 md:flex">
+          <div class="flex min-w-0 items-center gap-1.5 rounded-full border border-ink-800/15 bg-white/70 px-2.5 py-1">
+            <TacticAvatar :author="black.author" size="xs" team="black" />
+            <span class="max-w-[140px] truncate text-[11px] font-semibold text-ink-700">{{ blackAuthor }}</span>
+          </div>
+          <span class="font-display text-xs font-bold text-ink-300">VS</span>
+          <div class="flex min-w-0 items-center gap-1.5 rounded-full border border-vermilion-600/20 bg-white/70 px-2.5 py-1">
+            <span class="max-w-[140px] truncate text-[11px] font-semibold text-ink-700">{{ redAuthor }}</span>
+            <TacticAvatar :author="red.author" size="xs" team="red" />
           </div>
         </div>
 
-        <div class="flex shrink-0 items-center gap-1.5">
+        <div class="ml-auto flex shrink-0 items-center gap-1.5">
           <div class="hidden items-center lg:flex">
             <div class="segment !border-ink-200/70 !bg-paper-100/70 !p-0.5">
               <button
@@ -298,9 +258,9 @@ onBeforeUnmount(() => {
           <div class="mt-2 space-y-2.5">
             <div class="rounded-lg border border-vermilion-600/20 bg-vermilion-600/[.04] p-2.5">
               <div class="flex items-center gap-2">
-                <span class="seal h-6 w-6 text-[11px]">{{ red.glyph ?? red.name.slice(0, 1) }}</span>
+                <TacticAvatar :author="red.author" size="sm" team="red" />
                 <div class="min-w-0 flex-1">
-                  <div class="truncate text-[11px] font-bold text-ink-800">{{ red.name }}</div>
+                  <div class="truncate text-[11px] font-bold text-ink-800">{{ redAuthor }}</div>
                   <div class="text-[9px] text-ink-400">红方 · {{ red.source === 'external' ? '外部策略' : '内置策略' }} · v{{ red.version }}</div>
                 </div>
               </div>
@@ -311,9 +271,9 @@ onBeforeUnmount(() => {
             </div>
             <div class="rounded-lg border border-ink-800/15 bg-ink-800/[.03] p-2.5">
               <div class="flex items-center gap-2">
-                <span class="seal seal-ink h-6 w-6 text-[11px]">{{ black.glyph ?? black.name.slice(0, 1) }}</span>
+                <TacticAvatar :author="black.author" size="sm" team="black" />
                 <div class="min-w-0 flex-1">
-                  <div class="truncate text-[11px] font-bold text-ink-800">{{ black.name }}</div>
+                  <div class="truncate text-[11px] font-bold text-ink-800">{{ blackAuthor }}</div>
                   <div class="text-[9px] text-ink-400">黑方 · {{ black.source === 'external' ? '外部策略' : '内置策略' }} · v{{ black.version }}</div>
                 </div>
               </div>
@@ -397,15 +357,90 @@ onBeforeUnmount(() => {
         </div>
       </aside>
 
-      <!-- 中央战场 -->
-      <main class="flex min-w-0 flex-1 flex-col">
-        <div class="battle-stage relative min-h-0 flex-1 overflow-hidden p-1 sm:p-2">
-          <canvas
-            ref="canvasRef"
-            class="relative block h-full w-full"
-            role="application"
-            aria-label="实时象棋战场，点击棋子查看状态"
-          />
+      <!-- 中央战场（外框自适应居中，计时器置顶于观战框外，内部严格 16:9 观战框） -->
+      <main class="flex min-w-0 flex-1 flex-col bg-paper-200/40">
+        <!-- 计时器（观战区外上方，不遮挡棋盘） -->
+        <div class="flex shrink-0 items-center justify-center px-2 pt-2">
+          <div class="flex items-center gap-2 rounded-xl border border-ink-200/80 bg-paper-50/95 px-3.5 py-1 shadow-sm backdrop-blur-sm sm:gap-2.5 sm:px-4 sm:py-1.5">
+            <span class="num font-display text-[17px] font-bold leading-none text-ink-800 sm:text-[20px]">
+              {{ timerText }}
+            </span>
+            <span
+              class="rounded border px-1.5 py-0.5 text-[8px] font-bold tracking-[0.14em] sm:text-[9px]"
+              :class="phaseClass"
+            >
+              {{ phaseText }}
+            </span>
+            <span class="text-[9px] tracking-[0.12em] text-ink-400 sm:text-[10px]">
+              {{ timerLabel }}
+            </span>
+          </div>
+        </div>
+
+        <div class="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden p-1.5 sm:px-3 sm:pb-3 sm:pt-1.5">
+          <div class="flex h-full w-full items-center justify-center" style="container-type: size;">
+            <div
+              class="battle-stage relative overflow-hidden rounded-2xl border border-ink-300/60 shadow-panel"
+              style="width: min(100cqw, calc(100cqh * 16 / 9)); height: min(100cqh, calc(100cqw * 9 / 16));"
+            >
+              <canvas
+                ref="canvasRef"
+                class="relative block h-full w-full"
+                role="application"
+                aria-label="实时象棋战场，点击棋子查看状态"
+              />
+
+              <!-- 左上角：黑方 模型/作者 + 头像 + 血量条（不显示战术标题，紧凑矩形卡片置于棋盘外侧留白） -->
+              <div class="pointer-events-none absolute left-[1.8%] top-[2.6%] z-10 w-[19%] min-w-[112px] max-w-[168px]">
+                <div class="flex flex-col items-center rounded-xl border border-ink-800/20 bg-paper-50/95 p-1.5 text-center shadow-sm backdrop-blur-sm sm:p-2.5">
+                  <div class="flex items-center gap-1.5">
+                    <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-ink-800"></span>
+                    <span class="text-[9px] font-semibold tracking-wider text-ink-500">黑方</span>
+                  </div>
+                  <div class="mt-1 sm:mt-1.5">
+                    <TacticAvatar :author="black.author" size="md" team="black" class="!h-8 !w-8 sm:!h-11 sm:!w-11" />
+                  </div>
+                  <div class="mt-1 w-full truncate text-[11px] font-bold leading-tight text-ink-800 sm:mt-1.5 sm:text-[12px]">
+                    {{ blackAuthor }}
+                  </div>
+                  <div class="relative mt-1.5 h-[6px] w-full overflow-hidden rounded-full border border-ink-900/[.06] bg-ink-900/[.08] sm:mt-2">
+                    <div
+                      class="hud-bar absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-ink-900 to-ink-700"
+                      :class="lowBlack ? 'animate-pulse' : ''"
+                      :style="{ width: blackPct + '%' }"
+                    />
+                  </div>
+                  <div class="num mt-1 font-mono text-[9px] font-semibold text-ink-500 sm:text-[10px]">
+                    {{ Math.round(hud.blackBaseHp) }}<span class="hidden text-ink-300 sm:inline"> / {{ hud.blackBaseMax }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 右下角：红方 模型/作者 + 头像 + 血量条（不显示战术标题，紧凑矩形卡片置于棋盘外侧留白） -->
+              <div class="pointer-events-none absolute bottom-[2.6%] right-[1.8%] z-10 w-[19%] min-w-[112px] max-w-[168px]">
+                <div class="flex flex-col items-center rounded-xl border border-vermilion-600/25 bg-paper-50/95 p-1.5 text-center shadow-sm backdrop-blur-sm sm:p-2.5">
+                  <div class="flex items-center gap-1.5">
+                    <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-vermilion-500"></span>
+                    <span class="text-[9px] font-semibold tracking-wider text-vermilion-600">红方</span>
+                  </div>
+                  <div class="mt-1 sm:mt-1.5">
+                    <TacticAvatar :author="red.author" size="md" team="red" class="!h-8 !w-8 sm:!h-11 sm:!w-11" />
+                  </div>
+                  <div class="mt-1 w-full truncate text-[11px] font-bold leading-tight text-ink-800 sm:mt-1.5 sm:text-[12px]">
+                    {{ redAuthor }}
+                  </div>
+                  <div class="relative mt-1.5 h-[6px] w-full overflow-hidden rounded-full border border-ink-900/[.06] bg-ink-900/[.08] sm:mt-2">
+                    <div
+                      class="hud-bar absolute inset-y-0 right-0 rounded-full bg-gradient-to-l from-vermilion-700 to-vermilion-500"
+                      :class="lowRed ? 'animate-pulse' : ''"
+                      :style="{ width: redPct + '%' }"
+                    />
+                  </div>
+                  <div class="num mt-1 font-mono text-[9px] font-semibold text-ink-500 sm:text-[10px]">
+                    {{ Math.round(hud.redBaseHp) }}<span class="hidden text-ink-300 sm:inline"> / {{ hud.redBaseMax }}</span>
+                  </div>
+                </div>
+              </div>
 
           <!-- 开战横幅 -->
           <Transition name="fade">
@@ -514,6 +549,7 @@ onBeforeUnmount(() => {
                 <div class="mt-2 space-y-0.5">
                   <ToggleSwitch v-model="renderOptions.damageNumbers" label="伤害数字" />
                   <ToggleSwitch v-model="renderOptions.effects" label="战场特效" />
+                  <ToggleSwitch v-model="renderOptions.screenShake" label="画面震动" />
                   <ToggleSwitch v-model="renderOptions.intentLines" label="意图线" />
                   <ToggleSwitch :model-value="!muted" label="音效" @update:model-value="onSoundToggle" />
                 </div>
@@ -539,6 +575,8 @@ onBeforeUnmount(() => {
               </div>
             </div>
           </Transition>
+            </div>
+          </div>
         </div>
 
         <!-- 棋盘下方摘要 -->
@@ -732,7 +770,7 @@ onBeforeUnmount(() => {
       <span class="num font-mono text-[11px] font-bold text-vermilion-600">{{ hud.redAlive }}</span>
       <span class="text-[9px] text-ink-300">vs</span>
       <span class="num font-mono text-[11px] font-bold text-ink-700">{{ hud.blackAlive }}</span>
-      <span class="ml-auto truncate text-[9px] text-ink-300">{{ red.name }} vs {{ black.name }}</span>
+      <span class="ml-auto truncate text-[9px] text-ink-300">{{ redAuthor }} vs {{ blackAuthor }}</span>
     </div>
 
     <MobileInfoDrawer v-if="mobileInfo" :hud="hud" :logs="logs" @close="mobileInfo = false" />

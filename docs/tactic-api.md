@@ -7,8 +7,8 @@
 ```ts
 interface Tactic {
   id: string            // 小写 slug，全局唯一
-  name: string
-  author: string
+  name: string          // 战术标题（仅在战前配置界面展示）
+  author: string        // 模型名 / 作者名（配置页独立展示，观战 HUD 中与头像一同展示）
   version: string
   description: string   // 唯一的一段自述：打法、性格、难度、适用场景
   accent: 'vermilion' | 'jade' | 'gold' | 'ink'
@@ -18,6 +18,7 @@ interface Tactic {
 }
 ```
 
+- `name` 与 `author` 职责分离：`name` 为战术标题，仅在战前配置界面展示；`author` 为模型名或作者名，在配置界面以独立徽章展示，并在观战画面中搭配对应模型/厂商正方形头像展示（内置常见中美 AI 模型 Logo 匹配，未命中则回落默认头像）。
 - `createMemory`：每场对局调用一次，返回策略自己的跨 tick 记忆。引擎不解释它。
 - `decide`：每 125ms 调用一次，返回 `{ [unitId]: Intent }`；一个单位每个决策 tick 最多一条意图。
 - 策略只能读快照。快照是每 tick 重新构建的纯数据，不含引擎对象、函数引用或可变引用。
@@ -96,7 +97,8 @@ src/engine/tactics/
 │   ├── charge.ts
 │   └── counter.ts
 └── external/
-    └── index.ts    EXTERNAL_TACTIC_DEFS（默认空）
+    ├── index.ts            EXTERNAL_TACTIC_DEFS 外部策略登记表
+    └── gemini4Hydrogen.ts  外置示例策略（天枢算阵 / Gemini 4 Hydrogen）
 ```
 
 内置策略：

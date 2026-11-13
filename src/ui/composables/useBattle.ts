@@ -169,7 +169,10 @@ export function useBattle(options: {
   const paused = ref(false)
   const speed = ref(options.speed)
   const muted = ref(options.muted)
-  const renderOptions = ref(options.render)
+  const renderOptions = ref<Required<RenderOptions>>({
+    ...options.render,
+    screenShake: options.render.screenShake ?? true,
+  })
   const selectedId = ref<number | null>(null)
   const ready = ref(false)
   const engine = shallowRef<BattleEngine | null>(null)

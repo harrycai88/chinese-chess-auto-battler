@@ -24,4 +24,5 @@ export interface SavedSettings {
   damageNumbers: boolean
   effects: boolean
   intentLines: boolean
+  screenShake: boolean
 }

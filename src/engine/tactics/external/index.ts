@@ -1,4 +1,5 @@
 import type { Tactic } from '../api'
+import { gemini4HydrogenTactic } from './gemini4Hydrogen'
 
 /**
  * 外部策略登记处 —— 与内置策略分开存放，不进 builtin/。
@@ -13,4 +14,4 @@ import type { Tactic } from '../api'
  *   - `decide` 里请勿使用 `Math.random()` / `Date.now()`，否则同一种子无法复现对局；
  *   - `decide` 同步运行在决策循环里，单个 tick 的耗时直接算进对局，别写重活。
  */
-export const EXTERNAL_TACTIC_DEFS: readonly Tactic[] = []
+export const EXTERNAL_TACTIC_DEFS: readonly Tactic[] = [gemini4HydrogenTactic]

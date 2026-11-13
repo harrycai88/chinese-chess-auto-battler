@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { RegisteredTactic, TacticSource } from '../../engine/tactics/api'
+import { displayAuthor } from '../avatars'
 import Icon from './Icon.vue'
+import TacticAvatar from './TacticAvatar.vue'
 
 const props = defineProps<{
   modelValue: string
@@ -121,7 +123,12 @@ onBeforeUnmount(() => {
       aria-haspopup="listbox"
       @click="toggle"
     >
-      <span class="seal h-9 w-9 shrink-0 text-[14px]" :class="sealClass(current)">
+      <TacticAvatar
+        v-if="current.source === 'external'"
+        :author="current.author"
+        size="md"
+      />
+      <span v-else class="seal h-9 w-9 shrink-0 text-[14px]" :class="sealClass(current)">
         {{ glyphOf(current) }}
       </span>
 
@@ -141,6 +148,16 @@ onBeforeUnmount(() => {
             {{ current.source === 'external' ? '外部' : '内置' }}
           </span>
           <span class="shrink-0 text-[9px] text-ink-300">v{{ current.version }}</span>
+        </span>
+        <span
+          v-if="current.source === 'external'"
+          class="mt-1 flex items-center gap-1.5"
+        >
+          <span class="inline-flex items-center gap-1 rounded-md border border-ink-200/80 bg-paper-50 px-1.5 py-[1px] text-[9px] font-medium text-ink-600">
+            <span class="text-ink-300">模型/作者</span>
+            <span class="font-semibold text-ink-700">{{ displayAuthor(current.author) }}</span>
+          </span>
+          <span class="seal h-4 w-4 text-[9px]" :class="sealClass(current)">{{ glyphOf(current) }}</span>
         </span>
         <span class="mt-1 line-clamp-2 text-[10px] leading-4 text-ink-400">
           {{ current.description }}
@@ -190,7 +207,13 @@ onBeforeUnmount(() => {
               @mouseenter="activeIndex = indexOf(t.id)"
               @click="pick(t.id)"
             >
-              <span class="seal mt-0.5 h-7 w-7 shrink-0 text-[12px]" :class="sealClass(t)">
+              <TacticAvatar
+                v-if="t.source === 'external'"
+                :author="t.author"
+                size="sm"
+                class="mt-0.5"
+              />
+              <span v-else class="seal mt-0.5 h-7 w-7 shrink-0 text-[12px]" :class="sealClass(t)">
                 {{ glyphOf(t) }}
               </span>
               <span class="min-w-0 flex-1">
@@ -199,7 +222,15 @@ onBeforeUnmount(() => {
                     {{ t.name }}
                   </span>
                   <span class="shrink-0 text-[9px] text-ink-300">v{{ t.version }}</span>
-                  <span v-if="t.source === 'external'" class="shrink-0 text-[9px] text-ink-300">· {{ t.author }}</span>
+                </span>
+                <span
+                  v-if="t.source === 'external'"
+                  class="mt-0.5 flex items-center gap-1.5"
+                >
+                  <span class="inline-flex items-center gap-1 rounded border border-ink-200/70 bg-paper-100/70 px-1.5 py-[1px] text-[9px] text-ink-600">
+                    <span class="text-ink-300">模型</span>
+                    <span class="font-semibold text-ink-700">{{ displayAuthor(t.author) }}</span>
+                  </span>
                 </span>
                 <span class="mt-0.5 line-clamp-2 text-[10px] leading-4 text-ink-400">
                   {{ t.description }}
