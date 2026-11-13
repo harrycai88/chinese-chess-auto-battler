@@ -1,9 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { BUILTIN_TACTICS, getTactic } from '../engine/tactics'
+import {
+  ALL_TACTICS,
+  BUILTIN_TACTICS,
+  EXTERNAL_TACTICS,
+  TACTIC_ISSUES,
+  findTactic,
+} from '../engine/tactics'
 import { buildConfig } from '../engine/config'
 import type { LaunchOptions, SavedSettings } from './types'
-import StrategyCard from './components/StrategyCard.vue'
+import StrategySelect from './components/StrategySelect.vue'
 import SegmentedControl from './components/SegmentedControl.vue'
 import NumberSlider from './components/NumberSlider.vue'
 import ToggleSwitch from './components/ToggleSwitch.vue'
@@ -33,8 +39,9 @@ const seedText = ref(String(seed.value))
 const advanced = ref(false)
 const rulesOpen = ref(false)
 
-const redTactic = computed(() => getTactic(redId.value))
-const blackTactic = computed(() => getTactic(blackId.value))
+// 配置页永远有可选项：找不到就退回注册表第一套，而不是让 getTactic 抛错把页面炸掉
+const redTactic = computed(() => findTactic(redId.value) ?? ALL_TACTICS[0])
+const blackTactic = computed(() => findTactic(blackId.value) ?? ALL_TACTICS[0])
 
 const durationOptions = [
   { value: 60, label: '60s', hint: '短局' },
@@ -131,8 +138,9 @@ onMounted(() => {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) {
       const s = JSON.parse(raw) as Partial<SavedSettings>
-      if (s.redId === 'charge' || s.redId === 'counter') redId.value = s.redId
-      if (s.blackId === 'charge' || s.blackId === 'counter') blackId.value = s.blackId
+      // 只接受注册表里真实存在的策略 id：外部策略包被移除后，旧存档不会指向幽灵策略
+      if (s.redId && findTactic(s.redId)) redId.value = s.redId
+      if (s.blackId && findTactic(s.blackId)) blackId.value = s.blackId
       if (typeof s.duration === 'number') duration.value = s.duration
       if (typeof s.speed === 'number') speed.value = s.speed
       if (typeof s.muted === 'boolean') muted.value = s.muted
@@ -274,12 +282,15 @@ watch(
       <section id="config" class="grid scroll-mt-6 gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div class="space-y-6">
           <!-- 策略 -->
-          <div class="panel p-5 sm:p-6">
+          <!-- z-20：面板自带 backdrop-filter 会形成独立层叠上下文，抬高层级让下拉选单盖住下一块面板 -->
+          <div class="panel relative z-20 p-5 sm:p-6">
             <div class="flex flex-wrap items-end justify-between gap-3">
               <div>
                 <div class="kicker">01 / Matchup</div>
                 <h2 class="mt-1 font-display text-xl font-bold text-ink-800">选择双方策略</h2>
-                <p class="mt-1 text-[11px] text-ink-400">两套内置策略性格相反，可以任意对调，也可以同策略镜像对打。</p>
+                <p class="mt-1 text-[11px] text-ink-400">
+                  从选单里点选出阵策略。内置与外部策略分组列出，加载新的策略包后会自动出现在「外部策略」里。
+                </p>
               </div>
               <span class="chip">
                 <Icon name="info" :size="12" />
@@ -287,50 +298,43 @@ watch(
               </span>
             </div>
 
-            <div class="mt-5 grid gap-5 md:grid-cols-2">
-              <div>
-                <div class="flex items-center justify-between">
+            <div class="mt-4 grid gap-3 md:grid-cols-2">
+              <div class="rounded-xl border border-vermilion-600/15 bg-vermilion-600/[.03] p-2.5">
+                <div class="mb-1.5 flex items-center justify-between px-0.5">
                   <div class="flex items-center gap-2">
-                    <span class="h-2 w-2 rounded-full bg-vermilion-500"></span>
-                    <span class="text-[13px] font-bold text-ink-800">红方</span>
-                    <span class="text-[9px] font-semibold tracking-[0.2em] text-ink-300">RED · 下方</span>
+                    <span class="h-1.5 w-1.5 rounded-full bg-vermilion-500"></span>
+                    <span class="text-[11px] font-bold text-ink-700">红方</span>
+                    <span class="text-[9px] font-semibold tracking-[0.18em] text-ink-300">RED · 下方</span>
                   </div>
-                  <span class="text-[10px] text-ink-300">帅府</span>
+                  <span class="text-[9px] text-ink-300">帅府</span>
                 </div>
-                <div class="mt-2.5 space-y-2.5">
-                  <StrategyCard
-                    v-for="(t, i) in BUILTIN_TACTICS"
-                    :key="'red-' + t.id"
-                    :tactic="t"
-                    :index="i"
-                    side="red"
-                    :selected="redId === t.id"
-                    @select="redId = t.id"
-                  />
-                </div>
+                <StrategySelect v-model="redId" :tactics="ALL_TACTICS" />
               </div>
 
-              <div>
-                <div class="flex items-center justify-between">
+              <div class="rounded-xl border border-ink-800/10 bg-ink-800/[.02] p-2.5">
+                <div class="mb-1.5 flex items-center justify-between px-0.5">
                   <div class="flex items-center gap-2">
-                    <span class="h-2 w-2 rounded-full bg-ink-800"></span>
-                    <span class="text-[13px] font-bold text-ink-800">黑方</span>
-                    <span class="text-[9px] font-semibold tracking-[0.2em] text-ink-300">BLACK · 上方</span>
+                    <span class="h-1.5 w-1.5 rounded-full bg-ink-800"></span>
+                    <span class="text-[11px] font-bold text-ink-700">黑方</span>
+                    <span class="text-[9px] font-semibold tracking-[0.18em] text-ink-300">BLACK · 上方</span>
                   </div>
-                  <span class="text-[10px] text-ink-300">将府</span>
+                  <span class="text-[9px] text-ink-300">将府</span>
                 </div>
-                <div class="mt-2.5 space-y-2.5">
-                  <StrategyCard
-                    v-for="(t, i) in BUILTIN_TACTICS"
-                    :key="'black-' + t.id"
-                    :tactic="t"
-                    :index="i"
-                    side="black"
-                    :selected="blackId === t.id"
-                    @select="blackId = t.id"
-                  />
-                </div>
+                <StrategySelect v-model="blackId" :tactics="ALL_TACTICS" />
               </div>
+            </div>
+
+            <div class="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-ink-200/60 pt-2.5">
+              <p class="text-[10px] text-ink-400">
+                共 {{ ALL_TACTICS.length }} 套 · 内置 {{ BUILTIN_TACTICS.length }} · 外部
+                {{ EXTERNAL_TACTICS.length }}
+              </p>
+              <p v-if="TACTIC_ISSUES.length" class="text-[10px] font-semibold text-amber-600">
+                {{ TACTIC_ISSUES.length }} 处策略校验未通过，详见控制台
+              </p>
+              <p v-else class="text-[10px] text-ink-300">
+                外部策略放进 <code class="font-mono text-[9px]">tactics/external/</code> 即会分组出现
+              </p>
             </div>
           </div>
 
@@ -438,7 +442,7 @@ watch(
               <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
                 <div class="min-w-0 text-center">
                   <div class="mx-auto flex h-11 w-11 items-center justify-center rounded-full border-2 border-vermilion-600/25 bg-vermilion-600 text-paper-50 shadow-sm">
-                    <span class="font-display text-lg font-bold">{{ redTactic.id === 'charge' ? '攻' : '守' }}</span>
+                    <span class="font-display text-lg font-bold">{{ redTactic.glyph ?? redTactic.name.slice(0, 1) }}</span>
                   </div>
                   <div class="mt-2 truncate text-[12px] font-bold text-ink-800">{{ redTactic.name }}</div>
                   <div class="text-[9px] tracking-[0.16em] text-vermilion-600">红方</div>
@@ -446,7 +450,7 @@ watch(
                 <div class="font-display text-lg font-bold text-ink-300">VS</div>
                 <div class="min-w-0 text-center">
                   <div class="mx-auto flex h-11 w-11 items-center justify-center rounded-full border-2 border-ink-800 bg-ink-800 text-paper-50 shadow-sm">
-                    <span class="font-display text-lg font-bold">{{ blackTactic.id === 'charge' ? '攻' : '守' }}</span>
+                    <span class="font-display text-lg font-bold">{{ blackTactic.glyph ?? blackTactic.name.slice(0, 1) }}</span>
                   </div>
                   <div class="mt-2 truncate text-[12px] font-bold text-ink-800">{{ blackTactic.name }}</div>
                   <div class="text-[9px] tracking-[0.16em] text-ink-400">黑方</div>

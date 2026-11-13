@@ -3,8 +3,8 @@
  *
  * pnpm sim --matches 20 --seed 1 --red charge --black counter
  */
-import { buildConfig, getTactic, runBatch, runMatch } from '../src/engine'
-import { BUILTIN_TACTICS } from '../src/engine/tactics'
+import { buildConfig, findTactic, getTactic, runBatch, runMatch } from '../src/engine'
+import { ALL_TACTICS, TACTIC_ISSUES } from '../src/engine/tactics'
 
 function arg(name: string, fallback: string): string {
   const i = process.argv.indexOf(`--${name}`)
@@ -18,10 +18,32 @@ const blackId = arg('black', 'counter')
 const duration = Number(arg('duration', '120'))
 const config = buildConfig({ duration })
 
+// 找不到就明确报错并列出可用策略，不做静默回落
+const unknown = [redId, blackId].filter((id) => !findTactic(id))
+if (unknown.length > 0) {
+  console.error(`未知策略 id：${unknown.join('、')}`)
+  for (const source of ['builtin', 'external'] as const) {
+    const list = ALL_TACTICS.filter((t) => t.source === source)
+    if (list.length === 0) continue
+    console.error(
+      `  ${source === 'builtin' ? '内置' : '外部'}：${list.map((t) => `${t.id}(${t.name})`).join('、')}`,
+    )
+  }
+  process.exit(1)
+}
+
 console.log(
   `策略：红方 ${getTactic(redId).name} vs 黑方 ${getTactic(blackId).name} · 局时 ${duration}s · 种子 ${seed}`,
 )
-console.log(`内置策略：${BUILTIN_TACTICS.map((t) => `${t.name}(${t.id})`).join('、')}`)
+console.log(
+  `已注册 ${ALL_TACTICS.length} 套：${ALL_TACTICS.map(
+    (t) => `${t.name}(${t.id}${t.source === 'external' ? '·外部' : ''})`,
+  ).join('、')}`,
+)
+if (TACTIC_ISSUES.length > 0) {
+  console.warn(`策略校验问题 ${TACTIC_ISSUES.length} 处：`)
+  for (const issue of TACTIC_ISSUES) console.warn(`  - ${issue}`)
+}
 
 if (matches <= 1) {
   const t0 = Date.now()

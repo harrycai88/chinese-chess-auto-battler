@@ -35,8 +35,8 @@ defineEmits<{ close: [] }>()
               <span class="text-sm font-semibold">胜负</span>
             </div>
             <p class="mt-2 text-xs leading-6 text-ink-500">
-              摧毁敌方基地即获胜。局时归零不判平，进入加时：双方基地等速流血，复活加速，
-              阵亡的士、象归队。先扛不住的一方先倒。
+              摧毁敌方基地即获胜。局时归零不判平，进入加时：双方基地等速流血，复活读条按倍率
+              缩短——士、象也走这条读条回来，不再白送归队。先扛不住的一方先倒。
             </p>
           </div>
           <div class="rounded-xl border border-ink-200/70 bg-white/60 p-4">
@@ -56,7 +56,7 @@ defineEmits<{ close: [] }>()
             </div>
             <p class="mt-2 text-xs leading-6 text-ink-500">
               点击任意棋子可查看血量、形态、技能冷却与当前意图；空格暂停，1 / 2 / 4
-              切换倍速。棋盘上只保留战况，参数与日志都在两侧。
+              切换倍速。棋盘上的虚线圈是出生点与复活点，单位阵亡时圈内直接显示复活倒计时。
             </p>
           </div>
           <div class="rounded-xl border border-ink-200/70 bg-white/60 p-4">
@@ -66,7 +66,8 @@ defineEmits<{ close: [] }>()
             </div>
             <p class="mt-2 text-xs leading-6 text-ink-500">
               棋子不按象棋走法移动，但保留原版性格：车横扫、马跃击、炮架起、兵击退、
-              士守宫、象传送。数值改动会立刻作用于下一局。
+              士巡防、象传送。炮的射程只够压到对面半场，站到能打基地的位置就一定在炮塔射程内；
+              士在基地周围巡走，不会站桩。
             </p>
           </div>
         </div>

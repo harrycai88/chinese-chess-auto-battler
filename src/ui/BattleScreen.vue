@@ -298,10 +298,10 @@ onBeforeUnmount(() => {
           <div class="mt-2 space-y-2.5">
             <div class="rounded-lg border border-vermilion-600/20 bg-vermilion-600/[.04] p-2.5">
               <div class="flex items-center gap-2">
-                <span class="seal h-6 w-6 text-[11px]">{{ red.id === 'charge' ? '攻' : '守' }}</span>
+                <span class="seal h-6 w-6 text-[11px]">{{ red.glyph ?? red.name.slice(0, 1) }}</span>
                 <div class="min-w-0 flex-1">
                   <div class="truncate text-[11px] font-bold text-ink-800">{{ red.name }}</div>
-                  <div class="text-[9px] text-ink-400">红方 · {{ red.style }} · 复杂度 {{ red.complexity }}/5</div>
+                  <div class="text-[9px] text-ink-400">红方 · {{ red.source === 'external' ? '外部策略' : '内置策略' }} · v{{ red.version }}</div>
                 </div>
               </div>
               <div class="mt-2 flex items-center justify-between text-[9px] text-ink-400">
@@ -311,10 +311,10 @@ onBeforeUnmount(() => {
             </div>
             <div class="rounded-lg border border-ink-800/15 bg-ink-800/[.03] p-2.5">
               <div class="flex items-center gap-2">
-                <span class="seal seal-ink h-6 w-6 text-[11px]">{{ black.id === 'charge' ? '攻' : '守' }}</span>
+                <span class="seal seal-ink h-6 w-6 text-[11px]">{{ black.glyph ?? black.name.slice(0, 1) }}</span>
                 <div class="min-w-0 flex-1">
                   <div class="truncate text-[11px] font-bold text-ink-800">{{ black.name }}</div>
-                  <div class="text-[9px] text-ink-400">黑方 · {{ black.style }} · 复杂度 {{ black.complexity }}/5</div>
+                  <div class="text-[9px] text-ink-400">黑方 · {{ black.source === 'external' ? '外部策略' : '内置策略' }} · v{{ black.version }}</div>
                 </div>
               </div>
               <div class="mt-2 flex items-center justify-between text-[9px] text-ink-400">

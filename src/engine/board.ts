@@ -95,10 +95,11 @@ export function clampPointToBoard(x: number, y: number, radius: number): Point {
   }
 }
 
-export function clampPointToPalace(team: Team, x: number, y: number, radius: number): Point {
-  const p = PALACE[team]
-  return {
-    x: Math.min(p.x1 - radius, Math.max(p.x0 + radius, x)),
-    y: Math.min(p.y1 - radius, Math.max(p.y0 + radius, y)),
-  }
+/** 把点压进以 (cx, cy) 为圆心、radius 为半径的圆内 */
+export function clampPointToRadius(cx: number, cy: number, x: number, y: number, radius: number): Point {
+  const dx = x - cx
+  const dy = y - cy
+  const d = Math.hypot(dx, dy)
+  if (d <= radius || d < 1e-6) return { x, y }
+  return { x: cx + (dx / d) * radius, y: cy + (dy / d) * radius }
 }

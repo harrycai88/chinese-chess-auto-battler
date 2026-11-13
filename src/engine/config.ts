@@ -51,6 +51,14 @@ export interface RegenDef {
   delay: number
 }
 
+/** 护卫防区：以己方基地为圆心的可活动范围 */
+export interface GuardDef {
+  /** 半径：士只能在基地周围这么远的地方活动 */
+  radius: number
+  /** 巡游环半径：不接敌时绕着基地转的圈 */
+  orbit: number
+}
+
 export interface UnitDef {
   name: string
   hp: number
@@ -70,7 +78,8 @@ export interface UnitDef {
   teleport?: TeleportDef
   regen?: RegenDef
   deploy?: DeployDef
-  /** 常规军的复活读条；精英为 0 */
+  guard?: GuardDef
+  /** 常规军的复活读条；0 表示本局不再归队 */
   respawn: number
   elite: boolean
 }
@@ -152,7 +161,7 @@ export const DEFAULT_CONFIG: BattleConfig = {
     hp: 3000,
     radius: 0.62,
     turret: {
-      range: 3.65,
+      range: 3.8,
       damage: 24,
       cooldown: 0.72,
       projectileSpeed: 12,
@@ -201,24 +210,24 @@ export const DEFAULT_CONFIG: BattleConfig = {
     },
     cannon: {
       name: '炮',
-      hp: 300,
+      hp: 320,
       radius: 0.37,
       mass: 2.8,
-      speed: 0.96,
-      range: 4.5,
+      speed: 1.02,
+      range: 3.35,
       damage: 70,
-      cooldown: 2.25,
+      cooldown: 2.2,
       knockback: 1.4,
       stun: 0,
-      projectile: { speed: 9, splash: 1.05 },
+      projectile: { speed: 10, splash: 1.12 },
       deploy: {
-        deployTime: 1,
-        packTime: 1.3,
-        fleeTime: 1.35,
-        fleeSpeed: 2.05,
-        minRange: 1.45,
+        deployTime: 0.6,
+        packTime: 0.9,
+        fleeTime: 1.1,
+        fleeSpeed: 2.15,
+        minRange: 1.35,
       },
-      respawn: 19,
+      respawn: 14,
       elite: false,
     },
     pawn: {
@@ -237,18 +246,19 @@ export const DEFAULT_CONFIG: BattleConfig = {
     },
     advisor: {
       name: '士',
-      hp: 560,
+      hp: 580,
       radius: 0.3,
       mass: 2,
-      speed: 1.32,
-      range: 2.05,
-      damage: 36,
-      cooldown: 1.15,
+      speed: 1.52,
+      range: 2.15,
+      damage: 38,
+      cooldown: 1.12,
       knockback: 2.2,
       stun: 0,
-      cone: { angle: 1.15, minFactor: 0.34 },
+      cone: { angle: 1.2, minFactor: 0.36 },
       regen: { rate: 7, delay: 5 },
-      respawn: 0,
+      guard: { radius: 2.35, orbit: 1.55 },
+      respawn: 45,
       elite: true,
     },
     elephant: {
@@ -270,7 +280,7 @@ export const DEFAULT_CONFIG: BattleConfig = {
         cooldown: 7.5,
       },
       regen: { rate: 9, delay: 5 },
-      respawn: 0,
+      respawn: 60,
       elite: true,
     },
   },
@@ -307,7 +317,8 @@ export const UNIT_META: Record<UnitType, UnitMeta> = {
     name: '炮',
     chars: { red: '炮', black: '炮' },
     role: '攻城火力',
-    blurb: '架起后远程高爆，不需要炮架。有盲区，被贴脸会强制收炮后撤。',
+    blurb:
+      '架起后远程高爆，不需要炮架。射程只够压到对面半场，能打到基地的位置，也一定在基地炮塔射程内。',
   },
   pawn: {
     name: '兵',
@@ -318,8 +329,9 @@ export const UNIT_META: Record<UnitType, UnitMeta> = {
   advisor: {
     name: '士',
     chars: { red: '士', black: '士' },
-    role: '九宫护卫',
-    blurb: '被刚性限制在基地防区内，扇形霰弹越近越痛。无法追击。',
+    role: '巡防护卫',
+    blurb:
+      '只能在基地周围巡防，绕圈走位、绝不站桩。扇形霰弹越近越痛；一旦阵亡，很久才能归队。',
   },
   elephant: {
     name: '象',
@@ -400,6 +412,12 @@ export function validateConfig(cfg: BattleConfig): ConfigIssue[] {
     need(u.range > 0, `${p}.range`, '射程必须为正')
     need(u.damage > 0, `${p}.damage`, '伤害必须为正')
     need(u.cooldown > 0, `${p}.cooldown`, '攻击冷却必须为正')
+    need(u.respawn >= 0, `${p}.respawn`, '复活读条不能为负')
+    if (u.guard) {
+      need(u.guard.orbit > 0, `${p}.guard.orbit`, '巡游环半径必须为正')
+      need(u.guard.orbit < u.guard.radius, `${p}.guard.orbit`, '巡游环必须落在防区之内')
+      need(u.guard.radius > u.range * 0.5, `${p}.guard.radius`, '防区半径不能小于射程的一半')
+    }
     if (u.jump) {
       need(u.jump.maxRange > u.jump.minRange, `${p}.jump.maxRange`, '跃击距离窗口必须有效')
       need(u.jump.damage > 0, `${p}.jump.damage`, '跃击伤害必须为正')
@@ -412,5 +430,13 @@ export function validateConfig(cfg: BattleConfig): ConfigIssue[] {
       need(u.teleport.radius > 0, `${p}.teleport.radius`, '传送震击半径必须为正')
     }
   }
+  // 几何契约：炮能打到基地的站位，必然落在基地炮塔的射程内，不存在绝对安全的吊射位
+  const cannonReach = cfg.units.cannon.range + cfg.base.radius
+  const turretReach = cfg.base.turret.range + cfg.units.cannon.radius
+  need(
+    cannonReach <= turretReach,
+    'units.cannon.range',
+    `炮射程 ${cfg.units.cannon.range.toFixed(2)} 会让它在炮塔射程外吊射基地（上限 ${(turretReach - cfg.base.radius).toFixed(2)}）`,
+  )
   return issues
 }

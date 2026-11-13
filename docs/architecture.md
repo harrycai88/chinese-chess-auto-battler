@@ -28,10 +28,14 @@ src/
 │   ├── types.ts             单位、弹体、事件、统计类型
 │   └── tactics/
 │       ├── api.ts           策略协议：快照、意图、Tactic 接口
-│       ├── index.ts         内置策略注册表
-│       └── builtin/
-│           ├── charge.ts    全军冲锋（标尺）
-│           └── counter.ts   防守反击（局势判断 / 阵型 / 集火 / 走位）
+│       ├── registry.ts      校验（id 唯一 / 字段 / 枚举）与注册表构建
+│       ├── index.ts         注册表出口：内置 + 外部合流、findTactic / getTactic
+│       ├── builtin/
+│       │   ├── index.ts     内置登记表
+│       │   ├── charge.ts    全军冲锋（标尺）
+│       │   └── counter.ts   防守反击（局势判断 / 阵型 / 集火 / 走位）
+│       └── external/
+│           └── index.ts     外部策略登记表（分目录存放，默认空）
 ├── render/
 │   ├── renderer.ts          Canvas 2D 战场：木质棋盘、玉石棋子、特效
 │   └── audio.ts             Web Audio 过程化音效
@@ -91,7 +95,7 @@ requestAnimationFrame
 |:--|:--|:--|
 | PixiJS（Canvas 2D 兜底） | Canvas 2D | 规则与表现解耦；2D 手绘足够承载当前规模，且没有额外运行时依赖 |
 | 浏览器内 Web Worker 跑引擎 | 主线程固定步长 | 30 单位 / 8Hz 决策在实测中稳定 160+ fps；Worker 作为路线图 |
-| 外部策略文件夹加载与隔离 | 内置策略注册表 | 先把规则、表现、两套策略打磨完整；协议已抽成 `Tactic` 接口 |
+| 外部策略运行时加载与沙箱隔离 | 内置 / 外部两套目录 + 加载时校验，构建期静态加载 | 目录与协议已分好、校验已就位；运行时导入与沙箱排在做完策略打磨之后 |
 | 回放链接 / 对阵矩阵 | 种子可复现 + 无头批量仿真 | 初版保留最小复现能力，UI 侧暂不做分享链接 |
 
 ## 8. 扩展点

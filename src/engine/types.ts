@@ -117,6 +117,9 @@ export interface Unit {
   jumpToX: number
   jumpToY: number
   skillCooldown: number
+  /** 士的巡游：当前巡防点索引（0/1）与是否正在守点 */
+  patrolStep: number
+  guardHold: boolean
   tpPhase: TeleportPhase
   tpTimer: number
   tpStarId: string | null

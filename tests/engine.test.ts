@@ -1,14 +1,20 @@
 import { describe, expect, it } from 'vitest'
 import {
+  ALL_TACTICS,
   BattleEngine,
   BOARD_H,
   BOARD_W,
-  PALACE,
+  BUILTIN_TACTICS,
+  EXTERNAL_TACTICS,
   STAR_POINTS,
+  TACTIC_ISSUES,
   buildConfig,
+  buildRegistry,
+  findTactic,
   getTactic,
   runMatch,
   validateConfig,
+  validateTactic,
 } from '../src/engine'
 import type { BattleConfig } from '../src/engine'
 import type { IntentMap, Snapshot, Tactic } from '../src/engine/tactics/api'
@@ -24,9 +30,6 @@ function makeTactic(id: string, decide: (snap: Snapshot) => IntentMap): Tactic {
     author: 'test',
     version: '1.0.0',
     description: 'test tactic',
-    style: 'test',
-    complexity: 1,
-    tags: [],
     accent: 'ink',
     createMemory: () => ({}),
     decide,
@@ -64,6 +67,17 @@ function advance(engine: BattleEngine, seconds: number): void {
     engine.step()
     if (engine.phase === 'ended') return
   }
+}
+
+/** 推进到条件成立或超时，用于「等到某件事发生」的场景 */
+function advanceUntil(engine: BattleEngine, pred: () => boolean, maxSeconds = 40): boolean {
+  const steps = Math.round(maxSeconds / DT)
+  for (let i = 0; i < steps; i++) {
+    if (pred()) return true
+    engine.step()
+    if (engine.phase === 'ended') break
+  }
+  return pred()
 }
 
 function allFieldUnits(engine: BattleEngine): Unit[] {
@@ -123,6 +137,16 @@ describe('数值源与阵型', () => {
     expect(issues.some((i) => i.path === 'base.hp')).toBe(true)
   })
 
+  it('几何契约：炮能打到基地的站位，必然落在基地炮塔射程内', () => {
+    const cfg = buildConfig()
+    const cannonReach = cfg.units.cannon.range + cfg.base.radius
+    const turretReach = cfg.base.turret.range + cfg.units.cannon.radius
+    expect(cannonReach).toBeLessThanOrEqual(turretReach)
+    // 反例：把炮射程拉回 4.5，就会出现「我打得到你、你打不到我」的吊射位
+    cfg.units.cannon.range = 4.5
+    expect(validateConfig(cfg).some((i) => i.path === 'units.cannon.range')).toBe(true)
+  })
+
   it('标准阵型：每方 15 个常规/精英单位 + 1 个基地', () => {
     const engine = newEngine(buildConfig(), idleTactic, idleTactic)
     const red = engine.units.filter((u) => u.team === 'red' && !u.isBase)
@@ -146,19 +170,17 @@ describe('数值源与阵型', () => {
     }
   })
 
-  it('开局单位不越界，士在九宫内', () => {
+  it('开局单位不越界，士在自己的防区内', () => {
     const engine = newEngine(buildConfig(), idleTactic, idleTactic)
+    const guard = engine.config.units.advisor.guard!
     for (const u of engine.units) {
       expect(u.x).toBeGreaterThanOrEqual(-0.001)
       expect(u.x).toBeLessThanOrEqual(BOARD_W + 0.001)
       expect(u.y).toBeGreaterThanOrEqual(-0.001)
       expect(u.y).toBeLessThanOrEqual(BOARD_H + 0.001)
       if (u.type === 'advisor') {
-        const p = PALACE[u.team]
-        expect(u.x).toBeGreaterThanOrEqual(p.x0)
-        expect(u.x).toBeLessThanOrEqual(p.x1)
-        expect(u.y).toBeGreaterThanOrEqual(p.y0)
-        expect(u.y).toBeLessThanOrEqual(p.y1)
+        const base = engine.units.find((b) => b.isBase && b.team === u.team)!
+        expect(distance(u, base)).toBeLessThanOrEqual(guard.radius - u.radius + 0.01)
       }
     }
   })
@@ -281,17 +303,17 @@ describe('兵种机制', () => {
     expect(engine2.stats.red.rejectSamples.some((s) => s.reason === 'illegal-target' || s.reason === 'out-of-window')).toBe(true)
   })
 
-  it('士被限制在九宫内，象始终落在星位', () => {
+  it('士在防区环内巡防，象始终落在星位', () => {
     const engine = newEngine(buildConfig({ duration: 60 }), getTactic('charge'), getTactic('counter'), 7)
+    const guard = engine.config.units.advisor.guard!
     advance(engine, 55)
     for (const u of engine.units) {
       if (!u.alive) continue
       if (u.type === 'advisor') {
-        const p = PALACE[u.team]
-        expect(u.x).toBeGreaterThanOrEqual(p.x0 - 0.01)
-        expect(u.x).toBeLessThanOrEqual(p.x1 + 0.01)
-        expect(u.y).toBeGreaterThanOrEqual(p.y0 - 0.01)
-        expect(u.y).toBeLessThanOrEqual(p.y1 + 0.01)
+        const base = engine.units.find((b) => b.isBase && b.team === u.team)!
+        const d = distance(u, base)
+        expect(d).toBeLessThanOrEqual(guard.radius - u.radius + 0.02)
+        expect(d).toBeGreaterThan(u.radius + base.radius - 0.01)
       }
       if (u.type === 'elephant') {
         expect(
@@ -299,6 +321,62 @@ describe('兵种机制', () => {
         ).toBe(true)
       }
     }
+  })
+
+  it('士不站桩：哪怕策略让它待命，它也在防区里持续走位', () => {
+    const engine = newEngine(buildConfig(), idleTactic, idleTactic)
+    const advisors = engine.units.filter((u) => u.type === 'advisor')
+    // 只留士上战场：验证的是巡防机制本身，不是拥挤时的挤压
+    disableFieldUnits(engine, advisors)
+    disableBaseTurrets(engine)
+    advance(engine, 2)
+    let prev = advisors.map((u) => ({ x: u.x, y: u.y }))
+    let path = 0
+    let stillFrames = 0
+    let longestStill = 0
+    const frames = Math.round(12 / DT)
+    for (let i = 0; i < frames; i++) {
+      engine.step()
+      advisors.forEach((u, idx) => {
+        const step = Math.hypot(u.x - prev[idx].x, u.y - prev[idx].y)
+        path += step
+        if (step < 0.002) {
+          stillFrames++
+          longestStill = Math.max(longestStill, stillFrames)
+        } else {
+          stillFrames = 0
+        }
+        prev[idx] = { x: u.x, y: u.y }
+      })
+    }
+    // 平均速度要像一个在巡逻的护卫，而不是一根桩子
+    expect(path / (12 * advisors.length)).toBeGreaterThan(0.4)
+    // 任何一次「停住」都不能超过 0.3 秒
+    expect(longestStill * DT).toBeLessThan(0.3)
+  })
+
+  it('炮的展开与收起都要耗时，但不会拖住整个节奏', () => {
+    const cfg = buildConfig()
+    const deploy = cfg.units.cannon.deploy!
+    expect(deploy.deployTime).toBeGreaterThan(0.2)
+    expect(deploy.packTime).toBeGreaterThan(0.2)
+    expect(deploy.deployTime).toBeLessThan(1)
+    expect(deploy.packTime).toBeLessThan(1.2)
+
+    const engine = newEngine(cfg, idleTactic, idleTactic)
+    disableBaseTurrets(engine)
+    const cannon = unitOf(engine, 'red', 'cannon')
+    cannon.form = 'mobile'
+    cannon.intent = { type: 'deploy' }
+    advance(engine, deploy.deployTime * 0.5)
+    expect(cannon.form).toBe('deploying')
+    advance(engine, deploy.deployTime * 0.6)
+    expect(cannon.form).toBe('siege')
+    cannon.intent = { type: 'undeploy' }
+    advance(engine, 0.05)
+    expect(cannon.form).toBe('packing')
+    advance(engine, deploy.packTime + 0.05)
+    expect(cannon.form).toBe('mobile')
   })
 
   it('常规军阵亡后读条复活，满血回到出生点', () => {
@@ -315,6 +393,27 @@ describe('兵种机制', () => {
     expect(pawn.hp).toBeCloseTo(pawn.maxHp, 5)
     expect(Math.abs(pawn.x - pawn.homeX)).toBeLessThanOrEqual(pawn.radius + 0.02)
     expect(Math.abs(pawn.y - pawn.homeY)).toBeLessThanOrEqual(pawn.radius + 0.02)
+  })
+
+  it('士、象的复活读条极长，但读完之后仍会归队', () => {
+    const cfg = buildConfig()
+    expect(cfg.units.advisor.respawn).toBeGreaterThan(cfg.units.rook.respawn * 2)
+    expect(cfg.units.elephant.respawn).toBeGreaterThan(cfg.units.rook.respawn * 2)
+
+    const engine = newEngine(cfg, aggressiveTactic, aggressiveTactic)
+    disableFieldUnits(engine, [unitOf(engine, 'red', 'rook'), unitOf(engine, 'black', 'advisor')])
+    disableBaseTurrets(engine)
+    const rook = unitOf(engine, 'red', 'rook')
+    const advisor = unitOf(engine, 'black', 'advisor')
+    reviveAt(rook, 3.4, 4.5)
+    reviveAt(advisor, 4.6, 4.5)
+    expect(advanceUntil(engine, () => !advisor.alive, 40)).toBe(true)
+    expect(advisor.respawnTimer).toBeGreaterThan(cfg.units.advisor.respawn * 0.9)
+
+    // 旧规则里精英是「常规局永久离场」，现在读条走完就会归队
+    advisor.respawnTimer = 0.4
+    advance(engine, 1)
+    expect(advisor.alive).toBe(true)
   })
 
   it('回到自己的底座圈且脱战后会回血', () => {
@@ -381,12 +480,12 @@ describe('胜负与加时', () => {
   it('黄金对局：固定种子的结果指纹稳定', () => {
     const run = runMatch(buildConfig({ duration: 120 }), getTactic('charge'), getTactic('counter'), 20261112)
     const s = run.summary
-    expect(s.winner).toBe('black')
+    expect(s.winner).toBe('red')
     expect(s.reason).toBe('overtime-bleed')
-    expect(s.duration).toBeCloseTo(130.05, 3)
-    expect(s.blackBaseHp).toBeCloseTo(1239.91, 1)
-    expect(s.stats.red.damage).toBeCloseTo(26925.26, 0)
-    expect(s.stats.black.damage).toBeCloseTo(27564.37, 0)
+    expect(s.duration).toBeCloseTo(138.48, 2)
+    expect(s.redBaseHp).toBeCloseTo(268.08, 1)
+    expect(s.stats.red.damage).toBeCloseTo(31812.17, 0)
+    expect(s.stats.black.damage).toBeCloseTo(32154.97, 0)
   })
 
   it('完整对局能跑完且统计自洽', () => {
@@ -404,5 +503,68 @@ describe('胜负与加时', () => {
       expect(byKills).toBe(st.kills)
       expect(byDeaths).toBe(st.deaths)
     }
+  })
+})
+
+describe('策略注册表', () => {
+  it('内置与外部策略分注册，来源由注册表标注', () => {
+    expect(BUILTIN_TACTICS.length).toBeGreaterThan(0)
+    expect(BUILTIN_TACTICS.every((t) => t.source === 'builtin')).toBe(true)
+    expect(EXTERNAL_TACTICS.every((t) => t.source === 'external')).toBe(true)
+    expect(ALL_TACTICS.length).toBe(BUILTIN_TACTICS.length + EXTERNAL_TACTICS.length)
+    expect(new Set(ALL_TACTICS.map((t) => t.id)).size).toBe(ALL_TACTICS.length)
+  })
+
+  it('随仓库发布的内置策略都通过校验', () => {
+    expect(TACTIC_ISSUES).toEqual([])
+    for (const t of ALL_TACTICS) expect(validateTactic(t, t.id)).toEqual([])
+  })
+
+  it('未知 id 直接抛错，不回落成别家策略', () => {
+    expect(() => getTactic('chargee')).toThrowError(/未知策略 id「chargee」/)
+    expect(findTactic('chargee')).toBeUndefined()
+    expect(findTactic('charge')?.id).toBe('charge')
+  })
+
+  it('校验能指出缺失字段、非法 id 与非法 accent', () => {
+    const broken = {
+      id: 'Bad Id',
+      name: '',
+      author: 'x',
+      version: '1',
+      accent: 'red',
+      createMemory: () => ({}),
+    }
+    const issues = validateTactic(broken, 'external[0]')
+    const joined = issues.join('\n')
+    expect(joined).toContain('external[0].id')
+    expect(joined).toContain('external[0].name')
+    expect(joined).toContain('external[0].description')
+    expect(joined).toContain('external[0].accent')
+    expect(joined).toContain('external[0].decide')
+    expect(issues.some((i) => i.includes('小写字母'))).toBe(true)
+  })
+
+  it('重复 id 只保留先注册的一套，并记下问题', () => {
+    const a = makeTactic('dup', (snap) => idleTactic.decide(snap, {}))
+    const b = makeTactic('dup', (snap) => idleTactic.decide(snap, {}))
+    const result = buildRegistry([
+      { source: 'builtin', tactics: [a] },
+      { source: 'external', tactics: [b] },
+    ])
+    expect(result.tactics).toHaveLength(1)
+    expect(result.tactics[0].source).toBe('builtin')
+    expect(result.issues.join('\n')).toContain('重复')
+  })
+
+  it('非法策略被跳过，不会污染注册表', () => {
+    const result = buildRegistry([
+      {
+        source: 'external',
+        tactics: [{ id: 'ghost', name: 'ghost' } as unknown as Tactic],
+      },
+    ])
+    expect(result.tactics).toHaveLength(0)
+    expect(result.issues.length).toBeGreaterThan(0)
   })
 })

@@ -991,29 +991,103 @@ export class BattleRenderer {
 
   private drawPedestals(): void {
     const ctx = this.ctx
+    const now = this.now
     for (const u of this.engine.units) {
       if (u.isBase || u.isElite) continue
       const x = this.sx(u.homeX)
       const y = this.sy(u.homeY)
-      const r = this.cell * 0.36
-      const color = u.team === 'red' ? 'rgba(190,90,72,' : 'rgba(58,58,70,'
+      const r = this.cell * 0.31
+      const tint = u.team === 'red' ? '186,88,70' : '62,62,78'
+      const dead = !u.alive && u.respawnTimer > 0
+      const total = this.respawnTotal(u)
+      const ratio = dead && total > 0 ? clamp(1 - u.respawnTimer / total, 0, 1) : 1
+      const pulse = 0.5 + 0.5 * Math.sin(now * 0.006)
+
       ctx.save()
-      ctx.strokeStyle = `${color}.22)`
-      ctx.lineWidth = 1
-      ctx.setLineDash([2, 3])
+
+      // 底座地贴
+      ctx.fillStyle = `rgba(${tint},${dead ? 0.15 : 0.05})`
       ctx.beginPath()
       ctx.arc(x, y, r, 0, Math.PI * 2)
+      ctx.fill()
+
+      // 缓慢转动的虚线圈：这是「出生点」而不是普通地面
+      ctx.setLineDash([3, 4])
+      ctx.lineDashOffset = -now * 0.012
+      ctx.strokeStyle = `rgba(${tint},${dead ? 0.62 : 0.22})`
+      ctx.lineWidth = 1
+      ctx.beginPath()
+      ctx.arc(x, y, r * 0.92, 0, Math.PI * 2)
       ctx.stroke()
       ctx.setLineDash([])
-      ctx.fillStyle = `${color}.14)`
-      for (let i = 0; i < 4; i++) {
-        const a = (Math.PI / 2) * i + Math.PI / 4
+
+      // 复活符（一段带箭头的圆弧）；阵亡读条时改成居中的倒计时
+      if (dead && total > 0) {
+        // 读条环
+        ctx.strokeStyle = 'rgba(28,20,14,.32)'
+        ctx.lineWidth = Math.max(1.6, this.cell * 0.026)
         ctx.beginPath()
-        ctx.arc(x + Math.cos(a) * r, y + Math.sin(a) * r, 1.2, 0, Math.PI * 2)
-        ctx.fill()
+        ctx.arc(x, y, r * 1.12, 0, Math.PI * 2)
+        ctx.stroke()
+        ctx.strokeStyle = u.team === 'red' ? 'rgba(212,96,78,.92)' : 'rgba(96,96,120,.92)'
+        ctx.lineCap = 'round'
+        ctx.beginPath()
+        ctx.arc(x, y, r * 1.12, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ratio)
+        ctx.stroke()
+        ctx.lineCap = 'butt'
+
+        const size = Math.max(10, this.cell * 0.22)
+        ctx.font = `700 ${size}px "Microsoft YaHei",sans-serif`
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.lineWidth = 3
+        ctx.strokeStyle = 'rgba(30,20,12,.5)'
+        const text = `${Math.ceil(u.respawnTimer)}`
+        ctx.strokeText(text, x, y)
+        ctx.fillStyle = `rgba(255,${u.team === 'red' ? 228 : 234},208,${0.62 + pulse * 0.32})`
+        ctx.fillText(text, x, y)
+      } else {
+        this.drawRespawnGlyph(x, y, r * 0.38, `rgba(${tint},0.3)`)
       }
+
       ctx.restore()
     }
+  }
+
+  /** 复活读条的总时长（加时会按倍率缩短） */
+  private respawnTotal(u: Unit): number {
+    if (u.type === 'base') return 0
+    const base = this.engine.config.units[u.type].respawn
+    const scale = this.engine.phase === 'overtime' ? this.engine.config.match.overtimeRespawnScale : 1
+    return base * scale
+  }
+
+  private drawRespawnGlyph(x: number, y: number, r: number, color: string): void {
+    const ctx = this.ctx
+    const start = Math.PI * 0.42
+    const end = Math.PI * 1.92
+    ctx.save()
+    ctx.strokeStyle = color
+    ctx.lineWidth = Math.max(1.2, r * 0.3)
+    ctx.lineCap = 'round'
+    ctx.beginPath()
+    ctx.arc(x, y, r, start, end)
+    ctx.stroke()
+    // 箭头：沿弧末端切线方向
+    const ax = x + Math.cos(end) * r
+    const ay = y + Math.sin(end) * r
+    const tg = { x: -Math.sin(end), y: Math.cos(end) }
+    const nx = Math.cos(end)
+    const ny = Math.sin(end)
+    const h = r * 0.52
+    ctx.fillStyle = color
+    ctx.beginPath()
+    ctx.moveTo(ax + tg.x * h * 0.5, ay + tg.y * h * 0.5)
+    ctx.lineTo(ax - tg.x * h * 0.35 + nx * h * 0.85, ay - tg.y * h * 0.35 + ny * h * 0.85)
+    ctx.lineTo(ax - tg.x * h * 0.35 - nx * h * 0.85, ay - tg.y * h * 0.35 - ny * h * 0.85)
+    ctx.closePath()
+    ctx.fill()
+    ctx.restore()
   }
 
   private drawBases(): void {

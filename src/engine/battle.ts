@@ -6,7 +6,7 @@ import {
   RIVER_Y,
   STAR_POINTS,
   clampPointToBoard,
-  clampPointToPalace,
+  clampPointToRadius,
   formationFor,
   starAt,
 } from './board'
@@ -42,6 +42,10 @@ const approach = (current: number, target: number, maxDelta: number): number => 
   if (current < target) return Math.min(target, current + maxDelta)
   return Math.max(target, current - maxDelta)
 }
+
+/** 士的巡游内圈：不贴基地、也不进基地的分离半径 */
+const advisorInnerRadius = (orbit: number, baseRadius: number, unitRadius: number): number =>
+  Math.max(baseRadius + unitRadius + 0.06, orbit * 0.62)
 
 function emptyTypeStats(initial = 0): TypeStats {
   return {
@@ -152,12 +156,7 @@ export class BattleEngine {
       if (u.isBase || u.type === 'elephant') continue
       u.x += (this.rng.next() - 0.5) * 0.07
       u.y += (this.rng.next() - 0.5) * 0.07
-      const p =
-        u.type === 'advisor'
-          ? clampPointToPalace(u.team, u.x, u.y, u.radius)
-          : clampPointToBoard(u.x, u.y, u.radius)
-      u.x = p.x
-      u.y = p.y
+      this.clampUnit(u)
     }
 
     // 每步按播种后的顺序处理，避免红方永远先手
@@ -225,6 +224,8 @@ export class BattleEngine {
       jumpToX: 0,
       jumpToY: 0,
       skillCooldown: 0,
+      patrolStep: 0,
+      guardHold: false,
       tpPhase: 'none',
       tpTimer: 0,
       tpStarId: null,
@@ -288,6 +289,8 @@ export class BattleEngine {
       jumpToX: 0,
       jumpToY: 0,
       skillCooldown: 0,
+      patrolStep: 0,
+      guardHold: false,
       tpPhase: 'none',
       tpTimer: 0,
       tpStarId: null,
@@ -1134,14 +1137,14 @@ export class BattleEngine {
       this.endGame(other(target.team), 'base-destroyed')
       return
     }
-    if (target.isElite) {
-      target.respawnTimer = -1
-    } else {
-      const def = target.type === 'base' ? null : this.defOf(target)
-      const baseTime = def?.respawn ?? 0
-      target.respawnTimer =
-        this.phase === 'overtime' ? baseTime * this.config.match.overtimeRespawnScale : baseTime
-    }
+    const def = this.defOf(target)
+    const baseTime = def.respawn
+    target.respawnTimer =
+      baseTime <= 0
+        ? -1
+        : this.phase === 'overtime'
+          ? baseTime * this.config.match.overtimeRespawnScale
+          : baseTime
   }
 
   // ───────────────────────────── 移动 ─────────────────────────────
@@ -1197,6 +1200,7 @@ export class BattleEngine {
         return { x: n.x * deploy.fleeSpeed, y: n.y * deploy.fleeSpeed }
       }
     }
+    if (u.type === 'advisor') return this.advisorVelocity(u)
     const intent = u.intent
     if (!intent || intent.type === 'idle') return { x: 0, y: 0 }
 
@@ -1230,7 +1234,95 @@ export class BattleEngine {
     return { x: 0, y: 0 }
   }
 
+  /**
+   * 士的巡防移动：永远在动，绝不站桩。
+   * 平时在基地前方两点之间来回巡走；策略给的意图只在它需要「压向某个方向」时接管，
+   * 接敌后打一轮就换位，不会站着对轰。
+   */
+  private advisorVelocity(u: Unit): { x: number; y: number } {
+    const def = this.config.units.advisor
+    const guard = def.guard!
+    const base = this.baseUnits[u.team]
+    const speed = def.speed * (u.cooldown > 0 ? this.config.physics.combatSlow : 1)
+    const anchor = this.advisorAnchor(u, base, def)
+    const anchorD = anchor ? Math.hypot(anchor.x - u.x, anchor.y - u.y) : Infinity
+
+    // 滞回：离锚点远就压过去，到了就回到巡游，避免在阈值上来回抖
+    if (anchor && anchorD > 1.2) u.guardHold = true
+    else if (!anchor || anchorD < 0.6) u.guardHold = false
+
+    let goal = u.guardHold && anchor ? anchor : this.advisorPatrolPoint(u, base, guard)
+    let speedScale = 1
+    if (Math.hypot(goal.x - u.x, goal.y - u.y) < 0.15) {
+      u.patrolStep = u.patrolStep === 0 ? 1 : 0
+      goal = this.advisorPatrolPoint(u, base, guard)
+    } else if (!u.guardHold) {
+      // 巡游不必全速：护卫是巡逻，不是冲刺
+      speedScale = 0.72
+    }
+    const n = normalize(goal.x - u.x, goal.y - u.y)
+    if (n.len < 1e-4) return { x: 0, y: 0 }
+    return { x: n.x * speed * speedScale, y: n.y * speed * speedScale }
+  }
+
+  /** 巡防点：基地朝向战场的一侧，两个落点之间来回走 */
+  private advisorPatrolPoint(u: Unit, base: Unit, guard: UnitDef['guard']): { x: number; y: number } {
+    const g = guard!
+    const r = Math.min(g.orbit, g.radius - u.radius - 0.15)
+    const inward = u.team === 'red' ? -Math.PI / 2 : Math.PI / 2
+    const side = u.id % 2 === 0 ? 1 : -1
+    const spread = u.patrolStep === 0 ? 0.5 : 1.4
+    const angle = inward + side * spread
+    const p = {
+      x: base.x + Math.cos(angle) * r,
+      y: base.y + Math.sin(angle) * r,
+    }
+    return clampPointToBoard(p.x, p.y, u.radius)
+  }
+
+  /** 策略意图换算成士想去的位置（必定落在防区环上）；没有意图时返回 null = 纯巡游 */
+  private advisorAnchor(u: Unit, base: Unit, def: UnitDef): { x: number; y: number } | null {
+    const intent = u.intent
+    if (!intent) return null
+    const guard = def.guard!
+    const orbitR = Math.min(guard.orbit, guard.radius - u.radius)
+    const inner = advisorInnerRadius(orbitR, base.radius, u.radius)
+    const ring = (x: number, y: number): { x: number; y: number } => {
+      const dx = x - base.x
+      const dy = y - base.y
+      const d = Math.hypot(dx, dy)
+      if (d < inner) {
+        const a = d > 1e-4 ? Math.atan2(dy, dx) : u.facing
+        return { x: base.x + Math.cos(a) * inner, y: base.y + Math.sin(a) * inner }
+      }
+      return clampPointToRadius(base.x, base.y, x, y, guard.radius - u.radius)
+    }
+    if (intent.type === 'attack') {
+      const target = this.byId.get(intent.targetId)
+      if (!target || !target.alive) return null
+      // 站在目标与我方基地之间，隔一个射程的距离
+      const stop = def.range * 0.8
+      const n = normalize(base.x - target.x, base.y - target.y)
+      return ring(target.x + n.x * stop, target.y + n.y * stop)
+    }
+    if (intent.type === 'move') {
+      return ring(intent.x, intent.y)
+    }
+    if (intent.type === 'moveDir') {
+      return ring(u.x + intent.x * 2, u.y + intent.y * 2)
+    }
+    return null
+  }
+
   private updateFacing(u: Unit): void {
+    if (u.type === 'advisor') {
+      // 巡防中的士允许侧向移动、正面开火：扇面永远对着目标
+      const target = u.targetId !== null ? this.byId.get(u.targetId) : undefined
+      if (target && target.alive && this.inAttackRange(u, target)) {
+        u.facing = Math.atan2(target.y - u.y, target.x - u.x)
+        return
+      }
+    }
     if (u.vx * u.vx + u.vy * u.vy > 0.004) {
       u.facing = Math.atan2(u.vy, u.vx)
       return
@@ -1243,9 +1335,22 @@ export class BattleEngine {
 
   private clampUnit(u: Unit): void {
     if (u.type === 'advisor') {
-      const p = clampPointToPalace(u.team, u.x, u.y, u.radius)
-      u.x = p.x
-      u.y = p.y
+      // 士的防区是一个以基地为圆心的环：外圈压不出去，内圈也不许贴着基地站定
+      const guard = this.config.units.advisor.guard!
+      const base = this.baseUnits[u.team]
+      const inner = advisorInnerRadius(guard.orbit, base.radius, u.radius)
+      const dx = u.x - base.x
+      const dy = u.y - base.y
+      const d = Math.hypot(dx, dy)
+      let p = { x: u.x, y: u.y }
+      if (d < inner && d > 1e-6) {
+        p = { x: base.x + (dx / d) * inner, y: base.y + (dy / d) * inner }
+      } else if (d >= inner) {
+        p = clampPointToRadius(base.x, base.y, u.x, u.y, guard.radius - u.radius)
+      }
+      const q = clampPointToBoard(p.x, p.y, u.radius)
+      u.x = q.x
+      u.y = q.y
       return
     }
     const p = clampPointToBoard(u.x, u.y, u.radius)
@@ -1298,7 +1403,8 @@ export class BattleEngine {
     for (const base of [this.baseUnits.red, this.baseUnits.black]) {
       if (!base.alive) continue
       for (const u of this.units) {
-        if (u.isBase || !u.alive || u.type === 'elephant') continue
+        // 士被自己的巡游环约束，不参与基地分离，否则会被顶进墙角
+        if (u.isBase || !u.alive || u.type === 'elephant' || u.type === 'advisor') continue
         let dx = u.x - base.x
         let dy = u.y - base.y
         let d = Math.hypot(dx, dy)
@@ -1419,10 +1525,8 @@ export class BattleEngine {
     for (const u of this.turnOrder) {
       if (u.alive || u.isBase) continue
       if (u.respawnTimer > 0) continue
-      if (u.respawnTimer === 0) {
-        if (u.isElite) continue
-        this.respawn(u)
-      }
+      // respawnTimer === 0：读条完成；-1：本局不再归队（复活读条为 0 的兵种）
+      if (u.respawnTimer === 0) this.respawn(u)
     }
   }
 
@@ -1461,13 +1565,10 @@ export class BattleEngine {
     this.remaining = 0
     this.overtimeElapsed = 0
     this.emit({ type: 'overtime', x: BOARD_W / 2, y: RIVER_Y })
+    // 加时只压缩读条，不白送复活：士与象的长读条同样按倍率缩短
     for (const u of this.units) {
       if (u.alive || u.isBase) continue
-      if (u.isElite) {
-        this.respawn(u)
-      } else if (u.respawnTimer > 0) {
-        u.respawnTimer *= this.config.match.overtimeRespawnScale
-      }
+      if (u.respawnTimer > 0) u.respawnTimer *= this.config.match.overtimeRespawnScale
     }
   }
 
@@ -1657,6 +1758,7 @@ export class BattleEngine {
         baseTurretCooldown: this.config.base.turret.cooldown,
         cannonMinRange: this.config.units.cannon.deploy!.minRange,
         cannonRange: this.config.units.cannon.range,
+        advisorGuardRadius: this.config.units.advisor.guard!.radius,
         jumpMin: this.config.units.horse.jump!.minRange,
         jumpMax: this.config.units.horse.jump!.maxRange,
         respawn: {

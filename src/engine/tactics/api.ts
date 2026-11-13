@@ -71,6 +71,8 @@ export interface SnapshotRules {
   baseTurretCooldown: number
   cannonMinRange: number
   cannonRange: number
+  /** 士的防区半径（以己方基地为圆心） */
+  advisorGuardRadius: number
   jumpMin: number
   jumpMax: number
   respawn: Record<FieldUnitType, number>
@@ -97,19 +99,28 @@ export interface Snapshot {
 export type TacticMemory = Record<string, unknown>
 export type IntentMap = Record<number, Intent>
 
+export type TacticAccent = 'vermilion' | 'jade' | 'gold' | 'ink'
+
 export interface Tactic {
+  /** 小写 slug，全局唯一；外部策略也必须遵守 */
   id: string
   name: string
   author: string
   version: string
+  /** 唯一的一段自述：打法、性格、难度、适用场景都写在这里，界面只有这一处文案 */
   description: string
-  style: string
-  complexity: number
-  tags: string[]
-  accent: 'vermilion' | 'jade' | 'gold' | 'ink'
+  accent: TacticAccent
+  /** 印章里的单字，缺省取名字首字 */
+  glyph?: string
   createMemory: () => TacticMemory
   decide: (snapshot: Snapshot, memory: TacticMemory) => IntentMap
 }
+
+/** 策略来源：内置随仓库发布，外部由策略包加载 */
+export type TacticSource = 'builtin' | 'external'
+
+/** 注册表里的策略：来源由注册表标注，不由作者自报 */
+export type RegisteredTactic = Tactic & { source: TacticSource }
 
 export const distance = (a: { x: number; y: number }, b: { x: number; y: number }): number =>
   Math.hypot(a.x - b.x, a.y - b.y)

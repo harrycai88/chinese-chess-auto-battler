@@ -47,10 +47,10 @@ interface Ctx {
 
 /** 红方基准站位线；黑方按 y = 9 - y 镜像 */
 const LINE_Y: Record<Stance, Record<LineType, number>> = {
-  defend: { pawn: 6.0, rook: 6.4, horse: 6.2, cannon: 7.0 },
-  contest: { pawn: 5.3, rook: 5.8, horse: 5.6, cannon: 6.4 },
-  push: { pawn: 3.4, rook: 2.9, horse: 3.2, cannon: 4.4 },
-  allin: { pawn: 2.3, rook: 1.9, horse: 2.1, cannon: 5.15 },
+  defend: { pawn: 6.0, rook: 6.4, horse: 6.2, cannon: 6.6 },
+  contest: { pawn: 5.3, rook: 5.8, horse: 5.6, cannon: 6.0 },
+  push: { pawn: 3.4, rook: 2.9, horse: 3.2, cannon: 4.55 },
+  allin: { pawn: 2.3, rook: 1.9, horse: 2.1, cannon: 4.3 },
 }
 
 const SPREAD: Record<LineType, number> = {
@@ -100,13 +100,16 @@ function advisorSlot(ctx: Ctx, u: UnitView): { x: number; y: number } {
   const group = ctx.allies.filter((a) => a.type === 'advisor').sort((a, b) => a.id - b.id)
   const i = group.findIndex((a) => a.id === u.id)
   const side = i === 0 ? 1 : -1
-  const p = ctx.snap.palace
-  const rawX = ctx.base.x + dir.x * 1.0 + perp.x * side * 0.42
-  const rawY = ctx.base.y + dir.y * 1.0 + perp.y * side * 0.42
-  return {
-    x: clamp(rawX, p.x0 + u.radius, p.x1 - u.radius),
-    y: clamp(rawY, p.y0 + u.radius, p.y1 - u.radius),
+  // 士只在基地周围巡防：站位是防区内偏向威胁方向的一个点，具体轨迹由引擎的巡游环决定
+  const guard = Math.max(0.8, ctx.snap.rules.advisorGuardRadius - u.radius - 0.1)
+  let ox = dir.x * 1.5 + perp.x * side * 0.55
+  let oy = dir.y * 1.5 + perp.y * side * 0.55
+  const len = Math.hypot(ox, oy)
+  if (len > guard) {
+    ox = (ox / len) * guard
+    oy = (oy / len) * guard
   }
+  return { x: ctx.base.x + ox, y: ctx.base.y + oy }
 }
 
 function moveIntent(x: number, y: number): Intent {
@@ -144,7 +147,7 @@ function incomingDps(u: UnitView, ctx: Ctx): number {
   for (const e of ctx.enemies) {
     if (!e.alive) continue
     const reach =
-      e.type === 'cannon' ? 5.2 : e.type === 'advisor' ? 2.6 : e.type === 'elephant' ? 1.6 : 2.8
+      e.type === 'cannon' ? 3.7 : e.type === 'advisor' ? 2.7 : e.type === 'elephant' ? 1.6 : 2.8
     const d = distance(u, e)
     if (d < reach) sum += dpsOf(e) * (1 - d / reach)
   }
@@ -439,7 +442,9 @@ function elephantIntent(ctx: Ctx, u: UnitView): Intent {
 
 function advisorIntent(ctx: Ctx, u: UnitView): Intent {
   const target = nearestEnemy(ctx.enemies, u)
-  if (target && target.targetable && inRange(u, target, 0.05)) {
+  const guard = ctx.snap.rules.advisorGuardRadius
+  // 士会巡防出击：防区内的敌人直接压上去，引擎负责绕圈走位
+  if (target && target.targetable && distance(target, ctx.base) < guard + u.attackRange) {
     return { type: 'attack', targetId: target.id }
   }
   const slot = advisorSlot(ctx, u)
@@ -621,11 +626,9 @@ export const counterTactic: Tactic = {
   author: 'built-in',
   version: '1.0.0',
   description:
-    '读威胁、布阵型、集火、残血回城、炮位轮转；加时按比分死守或全军压上。',
-  style: '稳健',
-  complexity: 4,
-  tags: ['阵型', '集火', '走位', '加时决策'],
+    '复杂、稳健、判断型。每 125ms 重算局势：读威胁撤退、按价值集火、按姿态布阵，加时领先死守、落后换家。',
   accent: 'jade',
+  glyph: '守',
   createMemory: () =>
     ({
       stance: 'contest',

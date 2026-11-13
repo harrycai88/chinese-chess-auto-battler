@@ -45,11 +45,10 @@ export const chargeTactic: Tactic = {
   name: '全军冲锋',
   author: 'built-in',
   version: '1.0.0',
-  description: '见谁打谁，不作撤退。所有单位压向最近的敌人，用最直白的方式检验战场。',
-  style: '无脑莽',
-  complexity: 1,
-  tags: ['简单', '激进', '基准线'],
+  description:
+    '简单、激进、基准线。见谁打谁，不作撤退，全队压向最近的敌人——用最直白的打法标出战场下限。',
   accent: 'vermilion',
+  glyph: '攻',
   createMemory: () => ({}),
   decide(snap: Snapshot): IntentMap {
     const intents: IntentMap = {}
@@ -168,8 +167,10 @@ export const chargeTactic: Tactic = {
         continue
       }
 
-      if (u.type === 'advisor' && d > u.attackRange + 0.4) {
-        intents[u.id] = { type: 'idle' }
+      if (u.type === 'advisor') {
+        // 士压不出防区：防区内有敌人就扑上去，没有就继续巡游
+        const inZone = distance(chosen, snap.myBase) <= snap.rules.advisorGuardRadius + u.attackRange
+        intents[u.id] = inZone ? { type: 'attack', targetId: chosen.id } : { type: 'idle' }
         continue
       }
 
